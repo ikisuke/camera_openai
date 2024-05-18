@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>カメラとテキストボックスのレイアウト</title>
+    <style>
+      .container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+      }
+      .api-key-section {
+        padding: 10px;
+        border-bottom: 1px solid black;
+      }
+      .top-section {
+        display: flex;
+        flex: 1;
+      }
+      .camera-frame {
+        flex: 1;
+        border: 5px solid black;
+      }
+      .camera-frame.active {
+        border-color: green;
+      }
+      .camera-frame.inactive {
+        border-color: red;
+      }
+      .text-boxes {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around;
+        padding: 10px;
+      }
+      .text-boxes textarea {
+        width: 100%;
+        height: 100px;
+        padding: 10px;
+        box-sizing: border-box;
+        resize: vertical;
+        overflow-y: auto;
+      }
+      .bottom-section {
+        border-top: 1px solid black;
+        padding: 10px;
+      }
+      .bottom-section textarea {
+        width: 100%;
+        height: 100px;
+        padding: 10px;
+        box-sizing: border-box;
+        background-color: #f0f0f0;
+        border: none;
+        resize: vertical;
+        overflow-y: auto;
+      }
+      .button-section {
+        padding: 10px;
+        text-align: center;
+      }
+      .button-section button {
+        margin: 5px;
+        padding: 10px 20px;
+        font-size: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="api-key-section">
+        <input type="password" placeholder="APIキーを入力してください" />
+      </div>
+      <div class="top-section">
+        <div class="camera-frame inactive" id="camera-frame">
+          <video id="camera" autoplay></video>
+        </div>
+        <div class="text-boxes">
+          <textarea id="system1" placeholder="テキストボックス1"></textarea>
+          <textarea id="system2" placeholder="テキストボックス2"></textarea>
+        </div>
+      </div>
+      <div class="bottom-section">
+        <textarea
+          id="readonly-textbox"
+          placeholder="書き込めないテキストボックス"
+          readonly
+        ></textarea>
+      </div>
+      <div class="button-section">
+        <button id="toggle-button">Start</button>
+      </div>
+    </div>
+    <script>
+      let captureInterval;
+      let isCapturing = false;
+
+      async function startCamera() {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+          });
+          const video = document.getElementById("camera");
+          video.srcObject = stream;
+        } catch (error) {
+          console.error("カメラの起動に失敗しました:", error);
+        }
+      }
+
+      async function callOpenAIChat(prompt, imageData) {
+        const apiKey = document.querySelector(".api-key-section input").value;
+        const system1Text = document.getElementById("system1").value;
+        console.log(system1Text);
+
+        const url = "https://api.openai.com/v1/chat/completions";
+        const headers = {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        };
+        const body = JSON.stringify({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: system1Text,
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: imageData,
+                  },
+                },
+              ],
+            },
+          ],
+        });
+
+        try {
+          const response = await fetch(url, {
+            method: "POST",
+            headers: headers,
+            body: body,
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const data = await response.json();
+          return data.choices[0].message.content;
+        } catch (error) {
+          console.error("OpenAI API呼び出しに失敗しました:", error);
+        }
+      }
+
+      async function captureImageEverySecond() {
+        const video = document.getElementById("camera");
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+
+        while (isCapturing) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = canvas.toDataURL("image/png");
+
+          try {
+            console.log("画像を送信します:", imageData);
+            const response = await callOpenAIChat("画像を送信", imageData);
+            const textBox = document.getElementById("readonly-textbox");
+            if (textBox) {
+              textBox.value = response;
+            }
+          } catch (error) {
+            console.error("OpenAI API呼び出しに失敗しました:", error);
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      }
+
+      function toggleCapture() {
+        const cameraFrame = document.getElementById("camera-frame");
+        const toggleButton = document.getElementById("toggle-button");
+
+        if (isCapturing) {
+          clearInterval(captureInterval);
+          cameraFrame.classList.remove("active");
+          cameraFrame.classList.add("inactive");
+          toggleButton.textContent = "Start";
+        } else {
+          captureImageEverySecond();
+          cameraFrame.classList.remove("inactive");
+          cameraFrame.classList.add("active");
+          toggleButton.textContent = "Stop";
+        }
+
+        isCapturing = !isCapturing;
+      }
+
+      document
+        .getElementById("toggle-button")
+        .addEventListener("click", toggleCapture);
+
+      window.addEventListener("load", startCamera);
+    </script>
+  </body>
+</html>
