@@ -78,8 +78,8 @@
           <video id="camera" autoplay></video>
         </div>
         <div class="text-boxes">
-          <textarea id="system1" placeholder="テキストボックス1"></textarea>
-          <textarea id="system2" placeholder="テキストボックス2"></textarea>
+          <textarea id="system1" placeholder="システム1"></textarea>
+          <textarea id="system2" placeholder="システム2"></textarea>
         </div>
       </div>
       <div class="bottom-section">
@@ -158,30 +158,27 @@
         }
       }
 
-      async function captureImageEverySecond() {
+      function captureImageEverySecond() {
         const video = document.getElementById("camera");
         const canvas = document.createElement("canvas");
         const context = canvas.getContext("2d");
 
-        while (isCapturing) {
+        captureInterval = setInterval(() => {
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
           context.drawImage(video, 0, 0, canvas.width, canvas.height);
           const imageData = canvas.toDataURL("image/png");
-
-          try {
-            console.log("画像を送信します:", imageData);
-            const response = await callOpenAIChat("画像を送信", imageData);
-            const textBox = document.getElementById("readonly-textbox");
-            if (textBox) {
-              textBox.value = response;
-            }
-          } catch (error) {
-            console.error("OpenAI API呼び出しに失敗しました:", error);
-          }
-
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-        }
+          callOpenAIChat("画像を送信", imageData)
+            .then((response) => {
+              const textBox = document.getElementById("readonly-textbox");
+              if (textBox) {
+                textBox.value = response;
+              }
+            })
+            .catch((error) => {
+              console.error("OpenAI API呼び出しに失敗しました:", error);
+            });
+        }, 2000);
       }
 
       function toggleCapture() {
