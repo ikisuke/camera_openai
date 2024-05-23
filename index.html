@@ -108,34 +108,54 @@
           console.error("カメラの起動に失敗しました:", error);
         }
       }
-
-      async function callOpenAIChat(prompt, imageData) {
+      async function uploadImage(image) {
         const apiKey = document.querySelector(".api-key-section input").value;
-        const system1Text = document.getElementById("system1").value;
-        console.log(system1Text);
+        const url = "https://api.dify.ai/v1/files/upload";
+        const headers = {
+          // "Content-Type": "multipart/form-data",
+          Authorization: `Bearer ${apiKey}`,
+        };
 
-        const url = "https://api.openai.com/v1/chat/completions";
+        const formData = new FormData();
+        // formData.append("type", "image");
+        formData.append("file", image);
+        formData.append("user", "abc-123");
+
+        const response = await fetch(url, {
+          method: "POST",
+          headers: headers,
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const id = (await response.json()).id;
+        return id;
+      }
+
+      async function callOpenAIChat(prompt, imageId) {
+        const apiKey = document.querySelector(".api-key-section input").value;
+        // const system1Text = document.getElementById("system1").value;
+
+        const url = "https://api.dify.ai/v1/workflows/run";
         const headers = {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
         };
         const body = JSON.stringify({
-          model: "gpt-4o",
-          messages: [
+          inputs: {
+            shitumon: "画像についてコメントください",
+            // memory: "記憶なし",
+          },
+          response_mode: "blocking",
+          user: "abc-123",
+          files: [
             {
-              role: "system",
-              content: system1Text,
-            },
-            {
-              role: "user",
-              content: [
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: imageData,
-                  },
-                },
-              ],
+              type: "image",
+              transfer_method: "local_file",
+              upload_file_id: imageId,
             },
           ],
         });
@@ -146,13 +166,14 @@
             headers: headers,
             body: body,
           });
+          console.log("🚀 ~ response:", response);
 
           if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
           }
 
           const data = await response.json();
-          return data.choices[0].message.content;
+          return data.data.outputs.text1;
         } catch (error) {
           console.error("OpenAI API呼び出しに失敗しました:", error);
         }
@@ -167,18 +188,30 @@
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
           context.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const imageData = canvas.toDataURL("image/png");
-          callOpenAIChat("画像を送信", imageData)
-            .then((response) => {
-              const textBox = document.getElementById("readonly-textbox");
-              if (textBox) {
-                textBox.value = response;
-              }
-            })
-            .catch((error) => {
-              console.error("OpenAI API呼び出しに失敗しました:", error);
+          canvas.toBlob((blob) => {
+            const file = new File([blob], "capture.jpeg", {
+              type: "image/jpeg",
             });
-        }, 2000);
+            uploadImage(file)
+              .then((imageId) => {
+                console.log("🚀 ~ .then ~ imageId:", imageId);
+
+                callOpenAIChat("画像を送信", imageId)
+                  .then((response) => {
+                    const textBox = document.getElementById("readonly-textbox");
+                    if (textBox) {
+                      textBox.value = response;
+                    }
+                  })
+                  .catch((error) => {
+                    console.error("OpenAI API呼び出しに失敗しました:", error);
+                  });
+              })
+              .catch((error) => {
+                console.error("OpenAI API呼び出しに失敗しました:", error);
+              });
+          }, "image/jpeg");
+        }, 10000);
       }
 
       function toggleCapture() {
